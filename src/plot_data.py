@@ -139,7 +139,7 @@ def plot_latent_space_2d(
         title="Classes"
     )
 
-    plt.title("LeNet-5 Latent Space Projection (UMAP 2D)", fontsize=14)
+    plt.title("Latent Space Projection (UMAP 2D)", fontsize=14)
     plt.xlabel("UMAP Component 1")
     plt.ylabel("UMAP Component 2")
     plt.grid(True, linestyle='--', alpha=0.3)

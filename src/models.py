@@ -1,56 +1,47 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
-class LeNet5_(nn.Module):
+
+class MiniConvNet_(nn.Module):
     def __init__(
         self,
         input_channels: int = 3,
     ) -> None:
-        super(LeNet5_, self).__init__()
-
+        super(MiniConvNet_, self).__init__()
         self.feature_extractor = nn.Sequential(
-            nn.Conv2d(
-                in_channels=input_channels,
-                out_channels=6,
-                kernel_size=5,
-                stride=1,
-            ),
+            # Bloque 1
+            nn.Conv2d(in_channels=input_channels, out_channels=32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
             nn.ReLU(),
-            nn.AvgPool2d(
-                kernel_size=2,
-                stride=2,
-            ),
-            nn.Conv2d(
-                in_channels=6,
-                out_channels=16,
-                kernel_size=5
-            ),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+
+            # Bloque 2
+            nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
-            nn.AvgPool2d(
-                kernel_size=2,
-                stride=2
-            )
+            nn.MaxPool2d(kernel_size=2, stride=2),
         )
 
     def get_features(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.feature_extractor(x)  # Extrae características espaciales (features)
-        return x
+        return self.feature_extractor(x)
 
 
-class LeNet5Classifier(LeNet5_):
+class MiniConvNetClassifier(MiniConvNet_):
     def __init__(
         self,
         input_channels: int = 3,
         output_classes: int = 10
     ) -> None:
-        super(LeNet5Classifier, self).__init__(
+        super(MiniConvNetClassifier, self).__init__(
             input_channels=input_channels
         )
         self.mlp = nn.Sequential(
-            nn.Linear(in_features=16 * 5 * 5, out_features=120),
+            nn.Linear(in_features=64 * 8 * 8, out_features=512),
             nn.ReLU(),
-            nn.Linear(in_features=120, out_features=84),
-            nn.Linear(in_features=84, out_features=output_classes)
+            nn.Linear(in_features=512, out_features=254),
+            nn.ReLU(),
+            nn.Linear(in_features=254, out_features=output_classes)
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -60,23 +51,51 @@ class LeNet5Classifier(LeNet5_):
         return x
 
 
-class LeNet5Encoder(LeNet5_):
+class MiniConvNetEncoder(MiniConvNet_):
     def __init__(
         self,
         input_channels: int = 3,
-        output_dim: int = 128
+        output_dim: int = 256
     ) -> None:
-        super(LeNet5Encoder, self).__init__(
+        super(MiniConvNetEncoder, self).__init__(
             input_channels=input_channels
         )
+
         self.projector = nn.Sequential(
-            nn.Linear(in_features=16 * 5 * 5, out_features=256),
+            nn.Linear(in_features=64 * 8 * 8, out_features=512),
+            nn.BatchNorm1d(512),
             nn.ReLU(),
-            nn.Linear(in_features=256, out_features=output_dim),
+            nn.Dropout(0.2),
+            nn.Linear(in_features=512, out_features=output_dim),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.feature_extractor(x)
         x = x.view(x.size(0), -1)
         x = self.projector(x)
+        return F.normalize(x, p=2, dim=1)
+
+
+class MiniConvNetLinearProbe(nn.Module):
+    def __init__(
+        self,
+        encoder: MiniConvNetEncoder,
+        embedding_dim: int = 256,
+        output_classes: int = 10,
+    ) -> None:
+        super(MiniConvNetLinearProbe, self).__init__()
+        self.encoder = encoder
+        self.classifier = nn.Linear(
+            in_features=embedding_dim,
+            out_features=output_classes
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if not next(self.encoder.parameters()).requires_grad:
+            with torch.no_grad():
+                x = self.encoder(x)
+        else:
+            x = self.encoder(x)
+
+        x = self.classifier(x)
         return x

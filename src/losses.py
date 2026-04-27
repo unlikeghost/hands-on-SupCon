@@ -5,19 +5,33 @@ import torch.nn.functional as F
 
 class ContrastiveLoss(nn.Module):
     """
-    Contrastive loss from Hadsell et al. 2006.
-    L = (1-Y) * 0.5 * D^2 + Y * 0.5 * max(0, margin - D)^2
-
-    Y=0 → similar pair, Y=1 → dissimilar pair
+    Args:
+        pos_margin: Umbral de distancia para pares positivos (default=0)
+        neg_margin: Umbral de distancia para pares negativos (default=1)
     """
-    def __init__(self, margin: float = 1.0):
+
+    def __init__(self, pos_margin: float = 0.0, neg_margin: float = 1.0):
         super().__init__()
-        self.margin = margin
+        self.pos_margin = pos_margin
+        self.neg_margin = neg_margin
 
-    def forward(self, z1: torch.Tensor, z2: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
-        dist = F.pairwise_distance(z1, z2)  # (B,)
+    def forward(
+        self,
+        z1: torch.Tensor,
+        z2: torch.Tensor,
+        labels: torch.Tensor
+    ) -> torch.Tensor:
 
-        pos_loss = (1 - labels) * 0.5 * dist ** 2
-        neg_loss = labels * 0.5 * F.relu(self.margin - dist) ** 2
+        D = F.pairwise_distance(z1, z2) 
 
-        return (pos_loss + neg_loss).mean()
+        # Positivos: penaliza si D > pos_margin
+        pos_loss = torch.clamp(D - self.pos_margin, min=0.0) ** 2
+
+        # Negativos: penaliza si D < neg_margin
+        neg_loss = torch.clamp(self.neg_margin - D, min=0.0) ** 2
+
+        loss = torch.mean(
+            (1 - labels) * pos_loss +
+            labels * neg_loss
+        )
+        return loss
